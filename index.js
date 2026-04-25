@@ -2,9 +2,31 @@ import { GoogleGenAI } from "@google/genai";
 import 'dotenv/config';
 import readline from 'readline';
 
+import fs from 'fs';
+
+// 1. Function to parse sec.txt
+function getApiKey() {
+  try {
+    const content = fs.readFileSync('sec.txt', 'utf8');
+    // Uses regex to find the string after "apiKey:"
+    const match = content.match(/apiKey:\s*(\S+)/);
+    
+    if (!match || !match[1]) {
+      throw new Error("Could not find 'apiKey:' in sec.txt");
+    }
+    return match[1];
+  } catch (err) {
+      if (process.env.GEMINI_API_KEY) {
+          return process.env.GEMINI_API_KEY;
+      }
+    console.error("Error reading sec.txt:", err.message);
+    process.exit(1);
+  }
+}
+
 // 1. Initialize the SDK
 const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
+  apiKey: getApiKey(),
 });
 
 const rl = readline.createInterface({
