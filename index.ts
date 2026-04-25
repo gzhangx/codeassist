@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, ChatSession, GenerativeModel } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import 'dotenv/config';
 import * as readline from 'readline';
 import * as fs from 'fs';
@@ -6,25 +6,18 @@ import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 
-// --- TYPES ---
-interface EnvContext {
-  os: string;
-  cwd: string;
-  files: string;
-}
-
 // --- CONFIG & API SETUP ---
 function getApiKey(): string {
   try {
     const content = fs.readFileSync('sec.txt', 'utf8');
     const match = content.match(/apiKey:\s*(\S+)/);
-    return match ? match[1] : (process.env.GEMINI_API_KEY as string);
-  } catch (err) {
-    return process.env.GEMINI_API_KEY as string;
+    return match ? match[1] : (process.env.GEMINI_API_KEY || "");
+  } catch {
+    return process.env.GEMINI_API_KEY || "";
   }
 }
 
-const genAI = new GoogleGenerativeAI(getApiKey());
+const client = new GoogleGenAI({ apiKey: getApiKey() });
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
 // --- HANDLERS ---
@@ -46,12 +39,13 @@ const handlers = {
     return `Successfully wrote to ${filePath}`;
   },
   execute: (command: string): string => {
+    // Executes shell command and returns output
     return execSync(command, { encoding: 'utf8', timeout: 10000 });
   }
 };
 
 // --- SYSTEM SETUP ---
-const env: EnvContext = {
+const env = {
   os: `${os.platform()} ${os.release()}`,
   cwd: process.cwd(),
   files: fs.readdirSync(process.cwd()).join(', ')
@@ -61,30 +55,31 @@ const systemInstruction = `
 You are a Local Dev Agent. OS: ${env.os}. Dir: ${env.cwd}.
 Files: ${env.files}
 
-COMMAND PROTOCOL:
+COMMAND PROTOCOL (Use these tags to act):
 1. List: <list>path</list>
 2. Read: <read>path</read>
 3. Write: <write path="filename">content</write>
 4. Execute: <execute>command</execute>
 
 RULES:
-- Stay inside ${env.cwd}.
+- Only operate inside ${env.cwd}.
 - For <execute>, explain the command first.
 - Only one action per message.
 `;
 
 async function startAgent() {
-  // Use Gemini 1.5 Flash or 2.0 Flash for high-speed coding
-  const model: GenerativeModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  
-  const chat: ChatSession = model.startChat({
+  const modelName = "gemini-3-flash-preview";
+
+  // In @google/genai, history is managed within the session
+  const chat = client.chats.create({
+    model: modelName,
     history: [
       { role: "user", parts: [{ text: systemInstruction }] },
-      { role: "model", parts: [{ text: "TypeScript Agent Initialized. Ready for local operations." }] }
+      { role: "model", parts: [{ text: "Agent initialized using @google/genai. I am ready to manage your local files." }] }
     ],
-  });
+  })  
 
-  console.log("\x1b[32m%s\x1b[0m", "--- TS Local Agent Active ---");
+  console.log("\x1b[32m%s\x1b[0m", "--- Unified SDK Agent Active ---");
 
   const processStep = async (userInput: string): Promise<void> => {
     try {
@@ -92,14 +87,16 @@ async function startAgent() {
       const response = result.response.text();
       console.log(`\n\x1b[35mGemini:\x1b[0m\n${response}\n`);
 
-      // 1. Handle List
+      // --- TAG PARSING ---
+      
+      // Handle List
       if (response.includes('<list>')) {
         const dir = response.match(/<list>(.*?)<\/list>/)?.[1] || ".";
         const data = handlers.list(dir);
         return processStep(`Output of list ${dir}:\n${data}`);
       } 
       
-      // 2. Handle Read
+      // Handle Read
       if (response.includes('<read>')) {
         const file = response.match(/<read>(.*?)<\/read>/)?.[1];
         if (file) {
@@ -108,7 +105,7 @@ async function startAgent() {
         }
       }
 
-      // 3. Handle Write
+      // Handle Write
       if (response.includes('<write')) {
         const filePath = response.match(/path="(.*?)"/)?.[1];
         const content = response.match(/<write.*?>(.*?)<\/write>/s)?.[1];
@@ -118,7 +115,7 @@ async function startAgent() {
         }
       }
 
-      // 4. Handle Execute
+      // Handle Execute
       if (response.includes('<execute>')) {
         const cmd = response.match(/<execute>(.*?)<\/execute>/)?.[1];
         if (cmd) {
