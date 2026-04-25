@@ -77,27 +77,32 @@ async function startAgent() {
       { role: "user", parts: [{ text: systemInstruction }] },
       { role: "model", parts: [{ text: "Agent initialized using @google/genai. I am ready to manage your local files." }] }
     ],
-  })  
+  })
 
   console.log("\x1b[32m%s\x1b[0m", "--- Unified SDK Agent Active ---");
 
   const processStep = async (userInput: string): Promise<void> => {
     try {
-      const result = await chat.sendMessage({        
+      const startTime = Date.now();
+      const result = await chat.sendMessage({
         message: userInput,
       });
       const response = result.text || '';
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      console.log(`\x1b[90mwaiting ... ${duration}s\x1b[0m`);
+      console.log(`\x1b[33mPreview: ${response.substring(0, 60).replace(/\n/g, ' ')}...\x1b[0m`);
       console.log(`\n\x1b[35mGemini:\x1b[0m\n${response}\n`);
 
       // --- TAG PARSING ---
-      
+
       // Handle List
       if (response.includes('<list>')) {
         const dir = response.match(/<list>(.*?)<\/list>/)?.[1] || ".";
         const data = handlers.list(dir);
         return processStep(`Output of list ${dir}:\n${data}`);
-      } 
-      
+      }
+
       // Handle Read
       if (response.includes('<read>')) {
         const file = response.match(/<read>(.*?)<\/read>/)?.[1];
