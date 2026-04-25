@@ -83,8 +83,10 @@ async function startAgent() {
 
   const processStep = async (userInput: string): Promise<void> => {
     try {
-      const result = await chat.sendMessage(userInput);
-      const response = result.response.text();
+      const result = await chat.sendMessage({        
+        message: userInput,
+      });
+      const response = result.text || '';
       console.log(`\n\x1b[35mGemini:\x1b[0m\n${response}\n`);
 
       // --- TAG PARSING ---
